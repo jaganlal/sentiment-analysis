@@ -18,7 +18,6 @@ app.config["DEBUG"] = True
 
 vectorizer = CountVectorizer()
 classifier = LogisticRegression()
-total_score = -1
 
 @app.route('/', methods=['GET'])
 def home():
@@ -38,6 +37,7 @@ def get_home():
     return "<h1>Sentiment Analysis</h1><p>Simple sentiment analysis</p>"
 
 # read the ranking files from s3 and train it
+total_score = 0
 def read_rankings_and_train():
     result = {}
     try:
@@ -76,9 +76,9 @@ def read_rankings_and_train():
             classifier.fit(X_train, y_train)
             score = classifier.score(X_test, y_test)
             print('Accuracy for {} data: {:.4f}'.format(source, score))
+            global total_score
             total_score += score
 
-        
         if(total_score):
             total_score /= 3
 
@@ -92,7 +92,7 @@ def read_rankings_and_train():
 
 def predict(sentence):
     # training is not done
-    if(total_score < 0):
+    if(total_score == 0):
         read_rankings_and_train()
 
     sentences = []
