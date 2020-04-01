@@ -5,6 +5,8 @@
 import json
 import pandas as pd
 import boto3
+import pickle
+
 from io import StringIO, BytesIO
 from sklearn.feature_extraction.text import CountVectorizer
 from sklearn.linear_model import LogisticRegression
@@ -14,10 +16,10 @@ from sklearn.metrics import accuracy_score
 import flask
 
 app = flask.Flask(__name__)
-app.config["DEBUG"] = True
+app.config['DEBUG'] = True
 
-vectorizer = CountVectorizer()
-classifier = LogisticRegression()
+sentiment_vectorizer_model_file = 'sentiment_vectorizer_model.pkl'
+sentiment_classifier_model_file = 'sentiment_classifier_model.pkl'
 
 @app.route('/', methods=['GET'])
 def home():
@@ -28,17 +30,20 @@ def train():
     result = read_rankings_and_train()
     return json.dumps(result)
 
-@app.route("/sentiment/<sentence>")
+@app.route('/sentiment/<sentence>')
 def predict_sentence(sentence):
     result = predict(sentence)
     return json.dumps(result)
 
 def get_home():
-    return "<h1>Sentiment Analysis</h1><p>Simple sentiment analysis</p>"
+    return '<h1>Sentiment Analysis</h1><p>Simple sentiment analysis</p>'
 
 # read the ranking files from s3 and train it
 total_score = 0
 def read_rankings_and_train():
+    vectorizer = CountVectorizer()
+    classifier = LogisticRegression()
+
     result = {}
     try:
         # connect to s3
@@ -82,30 +87,76 @@ def read_rankings_and_train():
         if(total_score):
             total_score /= 3
 
+        save_model(vectorizer, sentiment_vectorizer_model_file)
+        save_model(classifier, sentiment_classifier_model_file)
+
         result = {
             'training_avg_score': total_score
         }
     except Exception as e:
-        print(e)
+        print('Exception in read_rankings_and_train: {0}'.format(e))
 
     return result
 
-def predict(sentence):
-    # training is not done
+def save_model(model, filename):
+    result = {}
+    # if training is not done, train it first
     if(total_score == 0):
         read_rankings_and_train()
 
-    sentences = []
-    sentences.append(sentence)
-    review_transformed = vectorizer.transform(sentences)
-    review_result = classifier.predict(review_transformed)
+    # Save to file in the current working directory
+    try:
+        with open(filename, 'wb') as file:
+            pickle.dump(model, file)
+            result = {'save-model': 'success'}
 
-    review = 'Positive review' if review_result[0] == 1 else 'Negative Review'
-    print(review)
+    except Exception as e:
+        print('Exception in save_model: {0}'.format(e))
+        result = {'save-model': 'failed'}
 
-    result = {
-        "review": review
-    }
+    return result
+
+def load_model(filename):
+    
+    # Load from file
+    try:
+        with open(filename, 'rb') as file:
+            model = pickle.load(file)
+    except Exception as e:
+        print('Exception in load_model: {0}'.format(e))
+        raise
+
+    return model
+
+def predict(sentence):
+    result = {}
+
+    try:
+        loaded_vectorizer = load_model(sentiment_vectorizer_model_file)
+        loaded_classifier = load_model(sentiment_classifier_model_file)
+    except Exception as e:
+        print('Error in load model')
+        return {
+            'Error': 'Error in load model'
+        }
+
+    try:
+        sentences = []
+        sentences.append(sentence)
+        review_transformed = loaded_vectorizer.transform(sentences)
+        review_result = loaded_classifier.predict(review_transformed)
+
+        review = 'Positive review' if review_result[0] == 1 else 'Negative Review'
+        print(review)
+        result = {
+            'review': review
+        }
+    except Exception as e:
+        print('Exception in predict: {0}'.format(e))
+        result = {
+            'review': 'Failure'
+        }
+
     return result
 
 app.run()
