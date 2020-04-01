@@ -39,12 +39,13 @@ def get_home():
     return '<h1>Sentiment Analysis</h1><p>Simple sentiment analysis</p>'
 
 # read the ranking files from s3 and train it
-total_score = 0
 def read_rankings_and_train():
     vectorizer = CountVectorizer()
     classifier = LogisticRegression()
 
     result = {}
+    total_score = 0
+
     try:
         # connect to s3
         s3 = boto3.client('s3', aws_access_key_id='', aws_secret_access_key='')
@@ -81,7 +82,6 @@ def read_rankings_and_train():
             classifier.fit(X_train, y_train)
             score = classifier.score(X_test, y_test)
             print('Accuracy for {} data: {:.4f}'.format(source, score))
-            global total_score
             total_score += score
 
         if(total_score):
@@ -100,9 +100,6 @@ def read_rankings_and_train():
 
 def save_model(model, filename):
     result = {}
-    # if training is not done, train it first
-    if(total_score == 0):
-        read_rankings_and_train()
 
     # Save to file in the current working directory
     try:
